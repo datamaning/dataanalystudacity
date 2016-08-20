@@ -1,0 +1,176 @@
+
+{% extends "common.html" %}
+
+{% block head %}
+    {{ super() }}
+
+    <script src="{{ url_for('static', filename='js/select.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/plot.js') }}"></script>
+
+    <!-- Typefonts -->
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:400,300,600,700,800' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/styles.css') }}">
+    
+    <!-- HideSeek (searchbar) -->
+    <script src="//cdnjs.cloudflare.com/ajax/libs/list.js/1.1.1/list.min.js"></script>
+
+    <script type="text/javascript" src="{{ url_for('static', filename='js/modernizr.custom.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/jquery.hideseek.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/rainbow-custom.min.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/jquery.anchor.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='js/initializers.js') }}"></script>
+
+    <!-- Responsive plotting -->
+    <script>
+        $(window).on('resize', function() {
+            if ( typeof myChart !== 'undefined') {
+                myChart.draw(0, true);
+            }
+        });
+    </script>
+
+{% endblock %}
+
+{% block content %}
+
+<div class="row">
+    <div id='itemSearch' class="col-md-8">
+        <blockquote id='intro'>789 unique Air Jordans can be found in the search bar below. Matches found on eBay are displayed using an interactive scatterplot, enjoy!</blockquote>
+        <input id="search-hidden-mode" name="search" placeholder="Search shoe here" type="text" data-list=".hidden_mode_list" data-nodata="No results found" autocomplete="on">
+        <ul id="itemSelect" class="dropdown vertical hidden_mode_list">
+            {% for item in items %}
+                <li><a onclick="itemSelect('{{item["model"]}}','{{item["year"]}}','{{item["code"]}}','{{item["name"]}}','{{item["color"]}}','{{item["full"]}}')">{{item["full"]}}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="row">
+    <div id='itemInfo' style='display:None'>
+        <div class='col-md-4'>
+            <img id='itemImage' style="max-width:100%">
+        </div>
+        <div class='table-responsive col-md-4'>
+            <table class='table table-borderless'>
+                <tbody>
+                    <tr>
+                        <td class='attention'>model</td>
+                        <td id='itemModel'></td>
+                    </tr>
+                    <tr>
+                        <td class='attention'>year</td>
+                        <td id='itemYear'></td>
+                    </tr>
+                    <tr>
+                        <td class='attention'>style</td>
+                        <td id='itemCode'></td>
+                    </tr>
+                    <tr>
+                        <td class='attention'>color</td>
+                        <td id='itemColor'></td>
+                    </tr>
+                    <tr>
+                        <td colspan=2 class='attention'>market price</td>
+                    </tr>
+                    <tr>
+                        <td class='attention'>new</td>
+                        <td id='itemNew'> - </td>
+                    </tr>
+                    <tr>
+                        <td class='attention'>used</td>
+                        <td id='itemUsed'> - </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div id='itemReset' class="col-md-8" style='display:None'>
+        <button id='resetButton' class="waves-effect waves-red btn btn-resp left-align" onclick="itemReset()">another shoe</button>
+    </div>
+</div>
+
+<div class="row">
+    <div id="itemLoader" class="row col-md-8" style='display:None'>
+        <div class="progress">
+            <div class="indeterminate"></div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div id='itemNone' style='display:None'>
+        <blockquote>No matches were found</blockquote>
+    </div>
+    <div id='itemDesc' style='display:None'>
+        <blockquote>Click on legend or scatterplot for more, please double tap on mobile device</blockquote>
+    </div>
+</div>
+
+<div class="row">
+    <div id="itemPlot" class="col-md-8"></div>
+</div>
+
+<div class="row">
+    <div id='shoeInfo' class='panel panel-info col-md-8' style='display:None'>
+        <div class='panel-heading'>
+            <a id='shoeTitle' class='panel-title description' target="_blank"></a>
+        </div>
+        <div class='panel-body'>
+            <div class='row'>
+                <div class='col-md-4'>
+                    <div class='row'>
+                        <img id='shoeImage' class='responsive-img center-align' style="max-width:100%">
+                    </div>
+                    <div class='row'>
+                        <div id='shoePrice' class="flow-text center-align" style="padding-bottom:10px"></div>
+                    </div>
+                    <div class='row'>
+                        <a id='shoeButton' class="waves-effect waves-red btn btn-resp center-align" target="_blank">show me</a>
+                    </div>
+                </div>
+                <div class='col-md-8'>
+                    <table class='table-responsive table_td'>
+                        <tbody>
+                            <tr>
+                                <td class='attention'>seller</td>
+                                <td colspan=3> 
+                                    <span id='shoeSeller'></span>
+                                    <span id='shoeFeed'></span>
+                                    <img id='shoeStar'></img>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class='attention'>condition</td>
+                                <td id='shoeCond'></td>
+                                <td class='attention'>size</td>
+                                <td id='shoeSize'></td>
+                            </tr>
+                            <tr>
+                                <td class='attention'>shipping cost</td>
+                                <td id='shoeShip'></td>
+                                <td class='attention'>handling time</td>
+                                <td id='shoeHandle'></td>
+                            </tr>
+                            <tr>
+                                <td class='attention'>best offer allowed</td>
+                                <td id='shoeOffer'></td>
+                                <td class='attention'>returns allowed</td>
+                                <td id='shoeReturn'></td>
+                            </tr>
+                            <tr>
+                                <td class='attention'>payment accepted</td>
+                                <td id='shoePayment'></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock content %}

@@ -1,0 +1,510 @@
+---
+title: "EDA of NBA Basketball State of Possession"
+author: Darren Liu
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# libraries
+library(data.table)
+library(ggplot2)
+library(plyr)
+library(GGally)
+
+# years of data available
+start <- 2005
+end <- 2015
+
+for (sn in start:end) {
+
+  dat_in <- fread(paste('/Users/home/dropbox/data/dataset/', as.character(sn), 'plays.csv', sep=""), header=T)
+  dat_in$season <- sn
+
+  if (sn == start) {
+    dat <- dat_in
+  } else {
+    dat <- rbind(dat, dat_in)
+  }
+}
+
+# remove missing values, NAs
+dat <- subset(dat, !is.na(start) & start != '' & !is.na(result) & result != '')
+
+# decoding raw data attributes into words
+# start is how a possession begins
+dat$sta <- ifelse(
+  dat$start == 1, 'made shot', ifelse(
+  dat$start == 2, 'live def fg reb', ifelse(
+  dat$start == 3, 'dead def fg reb', ifelse(
+  dat$start == 4, 'live def ft reb', ifelse(
+  dat$start == 5, 'dead def ft reb', ifelse(
+  dat$start == 6, 'dead to', ifelse(
+  dat$start == 7, 'live to', ifelse(
+  dat$start == 8, 'blocked shot', ifelse(
+  dat$start == 9, 'claim jumpball', ifelse(
+  dat$start == 10, 'live off fg reb', ifelse(
+  dat$start == 11, 'dead off fg reb', ifelse(
+  dat$start == 12, 'live off ft reb', ifelse(
+  dat$start == 13, 'dead off ft reb', ifelse(
+  dat$start == 14, 'reclaim jumpball', ifelse(
+  dat$start == 15, 'ball inbounded', ifelse(
+  dat$start == 19, 'claim jumpball', ''
+))))))))))))))))
+# result is how a possession ends
+dat$res <- ifelse(
+  dat$result %in% c(1,4) & dat$points - dat$ftm == 2, 'made 2pt fg', ifelse(
+  dat$result %in% c(1,4) & dat$points - dat$ftm == 3, 'made 3pt fg', ifelse(
+  dat$result == 2, 'miss 2pt fg', ifelse(
+  dat$result == 3, 'miss 3pt fg', ifelse(
+  dat$result %in%  c(5, 7), 'drew shooting foul', ifelse(
+  dat$result == 6, 'drew non-shooting foul', ifelse(
+  dat$result == 8 & dat$fta == 2, 'drew special foul', ifelse(
+  dat$result == 8 & dat$fta == 1, 'drew shooting violation', ifelse(
+  dat$result == 10, 'drew non-shooting violation', ifelse(
+  dat$result == 9, 'jumpball', ifelse(
+  dat$result == 11, 'live to', ifelse(
+  dat$result == 12, 'dead to', ifelse(
+  dat$result == 19, 'period end', ''
+)))))))))))))
+
+# BIN DATA POINTS
+# binnning of starting possession into states based on its scoring potential and relatedness
+dat$state <- ifelse(
+  dat$start %in% c(1,3,4,5,6,11,13,15,19), 'S1', ifelse(
+  dat$start %in% c(2,9,14), 'S2', ifelse(
+  dat$start %in% c(7,8), 'S3', ifelse(
+  dat$start %in% c(10,12), 'S4', ''
+))))
+# binnning of shots into ranges based on its scoring potential and intuition on the likeness of players that take them
+dat$sbin <- ifelse(
+  is.na(dat$dist) | dat$dist %in% c('', 'unknown'), 'no shot', ifelse(
+  as.numeric(dat$dist) <= 3, 'close', ifelse(
+  as.numeric(dat$dist) <= 11, 'short', ifelse(
+  (dat$points - dat$ftm) == 3 | as.numeric(dat$result) == 3, '3pt', 'mid'
+))))
+
+sbin_order <- c('close', 'short', 'mid', '3pt', 'no shot')
+dat$sbin <- factor(dat$sbin, levels=sbin_order)
+```
+
+> I want to explore the state of possession and its effect on scoring in NBA basketball. The state of possession is defined as how an offensive possession begins. For example, if the opponent makes their shot from the previous play, the possession starts from inbounding the ball under the basket. If a shot is missed, it can be rebounded by either team, and the possession begins where the rebound is retrieved. If the ball is stolen, the possession starts at perhaps the most advantageous state, as the defense is not in position to defend. I believe such information is important, and can help uncover team and player strengths and weaknesses that are typically overlooked by analysts.
+
+### Univariate plots
+#### possession start counts
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_sta <- dat [,
+  list(
+    cnt=.N
+  ), by = sta
+]
+# 1
+ggplot(data=dat_sta, aes(x=sta, y=cnt)) +
+  geom_bar(stat='identity', position='dodge') +
+  coord_flip()
+```
+
+> Most possessions begin with the ball inbounded after a made shot. The second most likely scenario is a defensive rebound after a missed shot by the opponent.
+
+#### possession result counts
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_res <- dat [,
+  list(
+    cnt=.N
+  ), by = res
+]
+# 2
+summary(dat_res)
+ggplot(data=dat_res, aes(x=res, y=cnt)) +
+  geom_bar(stat='identity', position='dodge') +
+  coord_flip()
+```
+
+> Missed and made 2 point field goals dominate how possessions end.
+
+#### possession result counts
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# shots
+# subsetting data, removing NAs and keeping only data points with valid shot distances
+# remove shots further than 30 feet, as they are not shots normally takengggg
+# Points per shot, and 1's included
+dat_shot_trim <- subset(dat, !is.na(dist) & ! dist %in% c('', 'unknown') & dist <= 30)
+
+dat_shot <- dat_shot_trim [,
+  list(
+    pts=sum(points),
+    cnt=.N
+  ), by = dist
+]
+summary(dat_shot)
+# shots plot
+# 3
+ggplot(aes(x=dist, y=cnt), dat=dat_shot) +
+  geom_bar(stat='identity', position='dodge')
+# 4
+ggplot(aes(x=dist, y=pts/cnt), dat=dat_shot) +
+  geom_bar(stat='identity', position='dodge')
+# -------------------
+```
+
+> This first of the two graphs is the shot distribution by distance. It appears to be a tri-modal distribution. There are local peaks around 0, 18, 25 ft shots. The NBA 3 point shot is 22 ft away on the sidelines and 23 ft 9 in elsewhere, which explains the 24 ft peak.
+
+> This second of the two graphs is the shot efficacy by distance. It appears to be bimodal. There are local peaks very close to the basket and the 3 pt line. In other words, going to the basket and 3 point shots are the most efficient shots in the NBA.
+
+### Bivariate plots
+#### start efficacy
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# shot bin
+dat_sta_ppa <- subset(dat, sta != '') [,
+  list(
+    pts = sum(points),
+    cnt= .N
+  ), by = sta
+]
+summary(dat_sta_ppa)
+# 5
+ggplot(data=dat_sta_ppa, aes(x=pts/cnt, y=sta)) +
+  geom_point()
+# -------------------
+```
+
+> The intuition that the stealing of the basketball (live to) leads to the highest propensity to score is confirmed. Offensive rebounds of field goals (live off fg reb) is second. Other important observations are that it is more favorable to start possessions from defensive rebounds (live def fg reb) than inbounding after a made shot (made shot). This matters because they are the two most frequently occurring possession beginnings.
+
+#### result efficacy
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# shot bin
+dat_res_ppa <- subset(dat, res != '') [,
+  list(
+    pts = sum(points),
+    cnt= .N
+  ), by = res
+]
+summary(dat_res_ppa)
+# 6
+ggplot(data=dat_res_ppa, aes(x=pts/cnt, y=res)) +
+  geom_point()
+# -------------------
+```
+
+> The deviance from whole numbers are due to shot made plus one more free throw scenarios (and 1), as well as missed free throws in general.
+
+#### shot counts by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# shots with respect to time
+dat_shot_sn <- dat_shot_trim [,
+  list(
+    pts=sum(points),
+    cnt=.N
+  ), by = c('season', 'dist')
+]
+summary(dat_shot_sn)
+shot_cnt_sn_plot <- ggplot(dat=dat_shot_sn) +
+  geom_point(aes(x=dist, y=cnt, color=season)) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black')
+# 7 
+shot_cnt_sn_plot
+# -------------------
+```
+
+> This is the shot count for each distance plotted over NBA seasons. The darker the gradient, the more recent. The interesting observation is the consistent decrease in mid-range shots taken. This change is echoed by an increase in 3 point shots taken.
+
+#### shot efficacy by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# shots with respect to time
+# 8
+ggplot(dat=dat_shot_sn) +
+  geom_point(aes(x=dist, y=pts/cnt, color=season)) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black')
+# -------------------
+```
+
+> The same but looking at efficacy. Short range shots 9 ft and under appears to be losing its competence.
+
+#### ggpairs on state and shot types
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_gally <- subset(dat, state != '')[, c('state', 'sbin'), with = F]
+# 9
+ggpairs(dat_gally)
+# -------------------
+```
+
+> The possession beginnings have been binned into four major categories denoted by S1 through S4. Shots also received the same treatment and are binned by distance.
+
+* S1: dead ball, mostly comprised of made shots
+* S2: rebound from opponent missed shot
+* S3: ball stolen
+* S4: rebound from own missed shot
+
+* close: 3 ft and under
+* short: 4 ft - 11 ft
+* mid: 2 point shots over 11 ft
+* 3pt: 3 point shots
+
+> Most possessions start in dead ball, followed by missed shots, as expected. Steals and offensive rebounds occur at about the same rate. Close shots and mid range shots are very frequent, followed by 3 point shots, short shorts happen the least. The cross variable plots are difficult to interpret, other plots will be used.
+
+#### Players and average points scored by shot type
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_sbin_pl <- dat_shot_trim [
+  order(sbin, actor),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(sbin, actor)
+]
+summary(dat_sbin_pl)
+# 10
+ggplot(data=subset(dat_sbin_pl, cnt > 30), aes(x=sbin, y=pts/cnt)) +
+  geom_boxplot()
+# -------------------
+```
+
+> Close shots are the best, and most players make them very well. 3 point shots are the second best on average. However, there appears to be a fat lower tail, suggesting it's only a good shot for those that can make it. The 25-75 percentile for mid range is flatter than other shots, suggesting most players tend not to better or worse than each other.
+
+#### Players and average points scored by state
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_state_pl <- dat_shot_trim [
+  order(state, actor),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(state, actor)
+]
+summary(dat_state_pl)
+# 11
+ggplot(data=subset(dat_state_pl, cnt > 30), aes(x=state, y=pts/cnt)) +
+  geom_boxplot()
+# -------------------
+```
+
+> live ball turnovers (steals) have the highest scoring potential, followed by offensive rebounds. Possessions beginning after a defensive rebound has noticeably higher scoring potential than a dead ball.
+
+#### Teams and attempts by shot type
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_sbin_tm <- dat_shot_trim [
+  order(sbin, off),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(sbin, off)
+]
+summary(dat_sbin_tm)
+# 12
+ggplot(data=subset(dat_sbin_tm, cnt > 30), aes(x=off, y=cnt)) +
+  geom_boxplot() +
+  facet_grid(sbin~.)
+```
+
+> The differentiation of shot selection is more clear here. The Houston Rockets really dislike mid range shots. The Denver Nuggets are very good at getting close shots.
+
+#### Teams and points per attempt by shot type
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 13
+ggplot(data=subset(dat_sbin_tm, cnt > 30), aes(x=off, y=pts/cnt)) +
+  geom_boxplot() +
+  facet_grid(sbin~.) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> It's interesting how teams don't seem to differentiate from each other in points from mid range shots. It shows that it is where shots go to die, as it is almost never your competitive edge. With the exception of Dallas. It's immediately clear to a NBA fan why that is, his name is Dirk Nowitzki.
+
+#### Teams and points per possession by state
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_state_tm <- dat_shot_trim [
+  order(state, off),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(state, off)
+]
+summary(dat_state_tm)
+# 14
+ggplot(data=subset(dat_state_tm, cnt > 30), aes(x=off, y=pts/cnt)) +
+  geom_boxplot() +
+  facet_grid(state~.) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> This plot shows which state the teams thrive and fail in. The Phoenix Suns has an uncanny ability to score with dead balls, which can only be attributed to their 2 time MVP point guard Steve Nash. It's also clear now that Denver has so many close shot attempts because of their high steal rate.
+
+### Multivariate
+#### Teams and attempts by shot type by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 15
+dat_sbin_tm_sn <- dat_shot_trim [
+  order(season, sbin, off),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(season, sbin, off)
+]
+summary(dat_sbin_tm_sn)
+ggplot(data=subset(dat_sbin_tm_sn, cnt > 30), aes(x=off, y=cnt, color=season)) +
+  geom_point() +
+  facet_grid(sbin~.) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> Lots of interesting movements here. The Houston Rockets really made a conscious effort to avoid mid-range shots and up their 3pt attempts. Daryl Morey is known for his early adaptation of analytics and it's effect is apparent. It's also interesting to see that Philadelphia Sixers also "took" the same approach to become a historically awful team.
+
+#### Teams and points per attempts by shot type by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 16
+ggplot(data=subset(dat_sbin_tm_sn, cnt > 30), aes(x=off, y=pts/cnt, color=season)) +
+  geom_point() +
+  facet_grid(sbin~.) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> San Antonio Spurs are just good every season, in every respect. It is inconceivable how they are able to keep this up. All this analyts (myself included) should just leave our computers and go watch the Spurs practice. The warriors have become the outlier in 3 point efficacy in the recent season due to the splash brothers.
+
+#### Teams and attempts allowed by shot type by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 17
+dat_sbin_def_sn <- dat_shot_trim [
+  order(season, sbin, def),
+  list(
+    pts = sum(points),
+    cnt = .N
+  ), by = list(season, sbin, def)
+]
+summary(dat_sbin_def_sn)
+ggplot(data=subset(dat_sbin_def_sn, cnt > 30), aes(x=def, y=cnt, color=season)) +
+  geom_point() +
+  facet_grid(sbin~.) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> This plot speaks volume on the true colors of a good defense. It is much more about making opponents take unfavorable shots than making them miss their shots. Teams that have been known for their defensive prowess at the given time have all forced opponents to take mid range and short ranged shots. Orlando during the Dwight Howard days is quite phenomenal, which is quite a shame given the Houston team he is on now is nowhere near that high. It's also a paradox that Houston, the advocate of 3 point shot lives by it offensively, but also dies by it defensively.
+
+#### Teams and points per attempts allowed by shot type by season
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 18
+ggplot(data=subset(dat_sbin_def_sn, cnt > 30), aes(x=def, y=pts/cnt, color=season)) +
+  geom_point() +
+  facet_grid(sbin~.) +
+  scale_color_gradient(limits = c(2005, 2015), low='white', high='black') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+> The general lack of variance here is another testament to the previous theory. Especially the mid-range, quality of defense doesn't seem to effect quality of shot. So by your opponent taking the mid range you have essentially won the battle.
+
+> The following three plots will be generated here to meet criteria but discussed in the final section.
+
+#### Shot efficacy by distances by state of possession
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dat_sbin_state_pl <- dat_shot_trim [
+  order(state, sbin, actor),
+  list(
+    pts = sum(points),
+    cnt = .N,
+    ppa = sum(points)/.N
+  ), by = list(state, sbin, actor)
+]
+summary(dat_sbin_state_pl)
+# 19
+sbin_state_plot <- ggplot(data=dat_sbin_state_pl, aes(x=state, y=pts/cnt), alpha=.2) +
+  facet_grid(.~sbin) +
+  geom_boxplot() +
+  ylim(quantile(dat_sbin_state_pl$ppa, 0.1), quantile(dat_sbin_state_pl$ppa, 0.9))
+sbin_state_plot
+```
+
+#### Shot occurrence by distances by state of possession
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# sbin actor
+dat_sbin_state <- subset(dat, sbin != 'no shot' & state != '') [
+  order(state, sbin),
+  list(
+    points = sum(points),
+    fga = sum(ifelse(result %in% c(1, 2, 3, 4), 1, 0))
+  ), by = list(state, sbin, actor)
+]
+
+dat_sbin_state$ppa <- dat_sbin_state$points / dat_sbin_state$fga
+
+dat_sh_pl <- dat [order(state), list(cnt_tot=.N), by = list(actor, sbin)]
+# shot bin by state
+dat_sbin_cnt <- merge(dat_sbin_state, dat_sh_pl, by = c('actor', 'sbin')) [
+  order(state, sbin),
+  list(
+    pct = fga / cnt_tot
+  ), by = list(state, sbin, actor)
+]
+summary(dat_sbin_cnt)
+# 20
+sbin_cnt_plot <- ggplot(data=dat_sbin_cnt, aes(x=sbin, y=pct)) +
+  facet_grid(state~.) +
+  geom_boxplot() +
+  ylim(quantile(dat_sbin_cnt$pct, 0.2), quantile(dat_sbin_cnt$pct, 0.8))
+sbin_cnt_plot
+```
+
+#### Player defensive contribution
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# defense
+cols <- c("fgcp","fgca","fgsp","fgsa","fgmp","fgma","fg3p","fg3a")
+dat_def_in <- fread(paste('/users/home/dropbox/data/dataset/defense.csv', sep=""), header=T)
+
+dat_def_pl <- reshape(subset(dat_def_in, type == 'pl'), 
+  varying = cols, 
+  v.names = "value",
+  timevar = 'result',
+  times = cols, 
+  direction = "long")[, c('item', 'season', 'state', 'result', 'value'), with = F]
+summary(dat_def_pl)
+# 21
+def_pl <- ggplot(data=dat_def_pl, aes(x=result, y=as.numeric(value))) +
+  geom_boxplot() +
+  geom_jitter(alpha=1/100, width=0.25) +
+  facet_grid(state~.)
+def_pl
+```
+
+## Final Plots and Summary
+### Plot One
+
+> The final plot choices were chosen because they most directly answer the question posed. What is the relationship between state possession and the shots taken?
+
+```{r, fig.width=8, fig.height=6, echo=FALSE, message=FALSE, warning=FALSE}
+sbin_state_plot + 
+  ggtitle('Shot Efficiency by State of Possession') +
+  xlab('State of possession') +
+  ylab('Points per shot taken')
+```
+
+1. Close ranged shots are always better, always. Attempts to get shots 3 feet or closer to the basket should be first priority. 3 point shots are the next best deal.
+2. Dead balls are generally the worst state to score in. The defense is always at a disadvantage when there is less time to make preparations.
+3. Short and mid range shots should be of last resort, unless there are players who exceed the average significantly to warrant it.
+4. Surprisingly, close shots from offensive rebounds are the worst kind of close shots. It is clear from earlier that offensive rebounds had the second highest scoring potency. So how? The next plot should clarify.
+
+### Plot Two
+```{r, fig.width=6, fig.height=9, echo=FALSE, message=FALSE, warning=FALSE}
+sbin_cnt_plot +
+  ggtitle('Shot Allocation by State of Possession') +
+  xlab('State of possession') +
+  ylab('Rate of shot taken')
+```
+
+> Even though it was seen earlier that more favorable states allow shots to be made more easily, the true value of a favorable state may be its ability to land you a close ranged shot. Dead ball states are the worst because it is harder to get a close shot. It is also now understandable why offensive rebounds have high payoffs, simply because it is most likely to end as a close shot, even though they are the close shots that are least likely to be made.
+
+### No. 3 - Defensive efficacy against shots by distance type by state of possession
+```{r, fig.width=8, fig.height=6, echo=FALSE, message=FALSE, warning=FALSE}
+def_pl +
+  ggtitle('Shot Defensive Efficacy by distance type by State of Possession') +
+  xlab('Results') +
+  ylab('Player coefficient')
+```
+
+> The data from this chart comes from the player coefficients of a ridge regression. This method is used to extract values that is referred to in advanced basketball metrics as RAPM, or real adjusted plus minus. The coefficients pertain to the defensive end only, and speaks on the defensive impact players have on the given topic. A player who has the tendency to lower opponent's ability to make a close shot by 2% during a dead ball would be marked as a data point of -2 on fgcp and S1. Boxplots that are flat indicate players generally have no defensive impact on the given topic. State S0 is introduced here representing all possessions.
+
+> This chart is enlightening in that it shows where defensive impact on shots is most pronounced, both positively and negatively. Centers, or big men, are valued for their ability to guard around the basket, thus lowering both rate of close shots and its success. This fact is well-known, and is evident here in the form of large variance in player efficacy in defending close ranged shot in all possession states. Less known impacts can also be observed by the variance in ability to deter and induce mid range and 3 point shots. These observations can be important additional information regarding a player's defensive efficacy. Earlier it was established that mid range shots can generally be regarded as the worst shot in basketball. A player's ability to deter all other outcomes and inducing mid range is perhaps an overlooked but important aspect of defensive effectiveness.
+
+### Reflection
+
+> This EDA was able to explore key points that confirm popular wisdom as well as dig into seldom discussed topics in advanced basketball analytics that appear to have significant impact on the game. Investigation of shot behavior in various possessoin states give compelling evidence to generally encourage an offensive strategy in getting more close shots and 3 point shots, and avoiding short and mid range shots. It is important to note these are general investigations on the league as a whole, and can not be assumed for players with extraordinary abilities. It is common sense to play to your strengths, and devise strategies that make the most sense for your roster. The importance of understanding state of possessions has yet to be fully explored in this analysis, as it can become valuable to understand your own and opponents strengths and weaknesses in various states and work to reduce scenarios that play to their strengths and induce scenarios that play to yours.
+
+> Extended amount of time was commmitted to curating raw play-by-play data to obtain the datasets used for this exploratory data analysis. Therefore, not too many obstacles were in the way of conducting the intended analysis. However, there was a lack of numerical and ordinal variables which limited opportunities to conduct methods relating to correlation and true scatterplots.
+
+
