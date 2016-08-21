@@ -19,9 +19,11 @@ function bySize_v1(data) {
     // size as y-axis
     var y = myChart.addCategoryAxis("y", "size");
     y.addOrderRule("size");
+    y.title = "Size (US)";
     
     // price as x-axis
     var x = myChart.addMeasureAxis("x", "price");
+    x.title = "Price (US dollars)";
     
     // more information, lastly condition as our interactive filter
     var items = myChart.addSeries([
@@ -29,7 +31,16 @@ function bySize_v1(data) {
         "shipping cost",
         "condition",
     ], dimple.plot.bubble, [x, y]);
+
+    // average price of each available size as barplot layer
+    var avg = myChart.addSeries([
+        "average price for size",
+    ], dimple.plot.bar, [x, y]);
+    avg.aggregate = dimple.aggregateMethod.avg;
+    // barplot to light grey
+    myChart.assignColor("average price for size", "#222222", "#000000", 0.1);
     
+    // add legend
     var myLegend = myChart.addLegend(0, 0, 100, 100, "left", items);
     
     myChart.draw();
