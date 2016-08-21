@@ -35,4 +35,4 @@
 > Find my Air Jordan, the search-query-dataviz webapp allows the user to find their favorite pair of Nike Air Jordans and understand its current eBay market by an interactive scatterplot. The user is able to quickly distinguish the offerings available by price, size and condition. Click on legend dials to filter by condition. Hover or click on any dot to show more detailed information on the exact shoe offering of that condition, size and price.  
   
 > Live link here (hopefully): http://54.175.254.39/  
-> Version feedbacks here: [feedback.txt](P6/feedback.txt)
+> Version feedbacks here: [feedback.txt](P6/feedback.md)
